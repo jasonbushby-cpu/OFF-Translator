@@ -1255,6 +1255,17 @@ Return raw JSON only.`;
 
     // Dynamically render columns for each selected language
     const selectedLangsFor3 = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
+    const langNamesFor3 = {
+      BG:'Bulgarian',CZ:'Czech',DE:'German',DK:'Danish',EE:'Estonian',EN:'English',
+      ES:'Spanish',FI:'Finnish',FR:'French',GR:'Greek',HR:'Croatian',HU:'Hungarian',
+      IT:'Italian',LT:'Lithuanian',LV:'Latvian',NL:'Dutch',NO:'Norwegian',PL:'Polish',
+      PT:'Portuguese',RO:'Romanian',SE:'Swedish',SI:'Slovenian',SK:'Slovak'
+    };
+    const langFlagsFor3 = {
+      BG:'🇧🇬',CZ:'🇨🇿',DE:'🇩🇪',DK:'🇩🇰',EE:'🇪🇪',EN:'🇬🇧',ES:'🇪🇸',FI:'🇫🇮',
+      FR:'🇫🇷',GR:'🇬🇷',HR:'🇭🇷',HU:'🇭🇺',IT:'🇮🇹',LT:'🇱🇹',LV:'🇱🇻',NL:'🇳🇱',
+      NO:'🇳🇴',PL:'🇵🇱',PT:'🇵🇹',RO:'🇷🇴',SE:'🇸🇪',SI:'🇸🇮',SK:'🇸🇰'
+    };
     const colsContainer = document.getElementById('dynamicColumns');
     const cultContainer = document.getElementById('dynamicCultural');
     colsContainer.innerHTML = '';
