@@ -1028,7 +1028,7 @@
     </div>
 
   </div>
-  <div style="text-align:center;padding:24px 0 16px;font-size:11px;color:#aaa;font-family:'DM Mono',monospace;">v0.04</div>
+  <div style="text-align:center;padding:24px 0 16px;font-size:11px;color:#aaa;font-family:'DM Mono',monospace;">v0.05</div>
 </div>
 
 <script>
@@ -1196,34 +1196,28 @@ async function doTranslate() {
   const tmSection = buildTMPromptSection(tmMatches);
   updateTMIndicator(source);
 
-  const systemPrompt = `You are a specialist translator for a toy design company. You translate English product text into both French and German, producing 3 meaningfully different options per language.
+  // Build dynamic prompt based on selected languages
+  const _langs3 = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
+  const _names3 = {
+    BG:'Bulgarian',CZ:'Czech',DE:'German',DK:'Danish',EE:'Estonian',EN:'English',
+    ES:'Spanish',FI:'Finnish',FR:'French',GR:'Greek',HR:'Croatian',HU:'Hungarian',
+    IT:'Italian',LT:'Lithuanian',LV:'Latvian',NL:'Dutch',NO:'Norwegian',PL:'Polish',
+    PT:'Portuguese',RO:'Romanian',SE:'Swedish',SI:'Slovenian',SK:'Slovak'
+  };
+  const _jsonStructure = _langs3.map(code => {
+    const key = code.toLowerCase();
+    const name = _names3[code] || code;
+    return `  "${key}": {\n    "options": [\n      { "translation": "...", "tone": "Formal|Informal|Playful|Neutral|Marketing", "recommended": true, "notes": ["...", "...", "..."] },\n      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] },\n      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] }\n    ],\n    "cultural_context": "2-3 sentences on ${name} market nuances for this text type"\n  }`;
+  }).join(',\n');
+  const _langList = _langs3.map(c => _names3[c] || c).join(', ');
 
-Each option must vary in tone and register. Do not return 3 near-identical translations — vary them: e.g. one formal, one warm/friendly, one marketing-punchy or playful.
+  const systemPrompt = `You are a specialist translator for a toy design company. Translate English product text into ${_langList}, producing 3 meaningfully different options per language.
 
-You understand:
-- French packaging conventions (DROM: France, Belgium, Switzerland)
-- German compound word norms, directness, toy safety phrasing (DACH: Germany, Austria, Switzerland)
-- Age-appropriate language for children's products
-- How register shifts across product types: safety labels need clarity, taglines need punch, descriptions need warmth
+Each option must vary in tone and register — e.g. one formal, one warm/friendly, one marketing-punchy or playful.
 
-Return ONLY valid raw JSON. No markdown, no code fences, no preamble. Use exactly this structure:
+Return ONLY valid raw JSON. No markdown, no code fences, no preamble. Structure:
 {
-  "french": {
-    "options": [
-      { "translation": "...", "tone": "Formal|Informal|Playful|Neutral|Marketing", "recommended": true, "notes": ["...", "...", "..."] },
-      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] },
-      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] }
-    ],
-    "cultural_context": "2-3 sentences on French market nuances for this text type"
-  },
-  "german": {
-    "options": [
-      { "translation": "...", "tone": "...", "recommended": true, "notes": ["...", "...", "..."] },
-      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] },
-      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] }
-    ],
-    "cultural_context": "2-3 sentences on German market nuances for this text type"
-  }
+${_jsonStructure}
 }`;
 
   const userPrompt = `Translate this English toy/design text:
@@ -1233,8 +1227,14 @@ Return ONLY valid raw JSON. No markdown, no code fences, no preamble. Use exactl
 Return raw JSON only.`;
 
   try {
-    const res = await fetchWithRetry(apiKey, {
-      max_tokens: 2500,
+    // Warn if too many languages for 3-options (gets very large)
+  if (selectedLangsFor3.length > 6) {
+    const proceed = confirm(`You have ${selectedLangsFor3.length} languages selected with 3 options mode. This may be slow or fail. Consider selecting fewer languages. Continue anyway?`);
+    if (!proceed) { setLoading(false); return; }
+  }
+
+  const res = await fetchWithRetry(apiKey, {
+      max_tokens: Math.min(500 * selectedLangsFor3.length + 1000, 8000),
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
@@ -1251,21 +1251,21 @@ Return raw JSON only.`;
       .replace(/```\s*$/i, '')
       .trim();
 
-    const parsed = JSON.parse(raw);
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch(parseErr) {
+      throw new Error('The AI returned an unexpected response. Please try again. (Parse error: ' + parseErr.message + ')');
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      throw new Error('Empty response from AI. Please try again.');
+    }
 
     // Dynamically render columns for each selected language
-    const selectedLangsFor3 = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
-    const langNamesFor3 = {
-      BG:'Bulgarian',CZ:'Czech',DE:'German',DK:'Danish',EE:'Estonian',EN:'English',
-      ES:'Spanish',FI:'Finnish',FR:'French',GR:'Greek',HR:'Croatian',HU:'Hungarian',
-      IT:'Italian',LT:'Lithuanian',LV:'Latvian',NL:'Dutch',NO:'Norwegian',PL:'Polish',
-      PT:'Portuguese',RO:'Romanian',SE:'Swedish',SI:'Slovenian',SK:'Slovak'
-    };
-    const langFlagsFor3 = {
-      BG:'🇧🇬',CZ:'🇨🇿',DE:'🇩🇪',DK:'🇩🇰',EE:'🇪🇪',EN:'🇬🇧',ES:'🇪🇸',FI:'🇫🇮',
-      FR:'🇫🇷',GR:'🇬🇷',HR:'🇭🇷',HU:'🇭🇺',IT:'🇮🇹',LT:'🇱🇹',LV:'🇱🇻',NL:'🇳🇱',
-      NO:'🇳🇴',PL:'🇵🇱',PT:'🇵🇹',RO:'🇷🇴',SE:'🇸🇪',SI:'🇸🇮',SK:'🇸🇰'
-    };
+    const selectedLangsFor3 = _langs3;
+    const langNamesFor3 = _names3;
+    const langFlagsFor3 = LANG_FLAGS;
     const colsContainer = document.getElementById('dynamicColumns');
     const cultContainer = document.getElementById('dynamicCultural');
     colsContainer.innerHTML = '';
@@ -1308,7 +1308,7 @@ Return raw JSON only.`;
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   } catch(err) {
-    showError('Translation failed: ' + err.message);
+    showError((err.message && err.message !== 'undefined') ? err.message : 'Translation failed — please check your API key and try again.');
   } finally {
     setLoading(false);
   }
@@ -1397,7 +1397,7 @@ Return this exact JSON structure:
       document.getElementById('eu23Box').style.display = 'block';
 
     } catch (err) {
-      showError('Translation failed: ' + err.message);
+      showError((err.message && err.message !== 'undefined') ? err.message : 'Translation failed — please check your API key and try again.');
     }
   }
 
@@ -1507,7 +1507,7 @@ Return this exact JSON structure:
           modelIndex++;
           const waitMs = attempt * 2000;
           const loadingEl = document.querySelector('#loading p');
-          if (loadingEl) loadingEl.textContent = `Server busy — retrying (${attempt}/${maxRetries})...`;
+          if (loadingEl) loadingEl.textContent = `Server busy, retrying with ${currentModel.includes('haiku') ? 'faster model' : 'same model'} (attempt ${attempt + 1} of ${maxRetries})...`;
           await new Promise(r => setTimeout(r, waitMs));
           continue;
         }
@@ -1524,7 +1524,7 @@ Return this exact JSON structure:
         await new Promise(r => setTimeout(r, 2000));
       }
     }
-    throw new Error('Server is overloaded. Please try again in a few minutes.');
+    throw new Error('The Anthropic API is currently overloaded. Please wait a minute and try again, or reduce the number of selected languages.');
   }
   // ────────────────────────────────────────────────────────────
 
