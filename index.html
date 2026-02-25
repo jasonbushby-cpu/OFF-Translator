@@ -1028,6 +1028,7 @@
     </div>
 
   </div>
+  <div style="text-align:center;padding:24px 0 16px;font-size:11px;color:#aaa;font-family:'DM Mono',monospace;">v0.04</div>
 </div>
 
 <script>
@@ -1253,6 +1254,7 @@ Return raw JSON only.`;
     const parsed = JSON.parse(raw);
 
     // Dynamically render columns for each selected language
+    const selectedLangsFor3 = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
     const colsContainer = document.getElementById('dynamicColumns');
     const cultContainer = document.getElementById('dynamicCultural');
     colsContainer.innerHTML = '';
