@@ -1170,79 +1170,69 @@ async function doTranslate() {
   showResults(false);
   setLoading(true);
 
-  const compactMode = document.getElementById('compactMode').checked;
+  const compactMode      = document.getElementById('compactMode').checked;
   const threeOptionsMode = document.getElementById('threeOptionsMode').checked;
-  const selectedLangs = getSelectedLangs();
+  const selectedLangs    = getSelectedLangs();
 
-  // If languages are selected AND 3-options is OFF → use EU multi-lang mode
+  // Route: no languages selected and no 3-options → warn
+  if (selectedLangs.length === 0 && !threeOptionsMode) {
+    showError('Please select at least one language, or tick "3 options" mode.');
+    setLoading(false);
+    return;
+  }
+
+  // Route: languages selected, 3-options OFF → fast single translation per lang
   if (selectedLangs.length > 0 && !threeOptionsMode) {
     await doEU23Translate(apiKey, source, ctx, compactMode);
     setLoading(false);
     return;
   }
 
-  // If languages selected AND 3-options is ON → run 3-options for each selected lang
-  // For now fall through to 3-options mode if ticked, otherwise show warning
-  if (selectedLangs.length === 0 && !threeOptionsMode) {
-    showError('Please select at least one language, or tick "3 options" mode.');
-    setLoading(false);
-    return;
-  }
-  const compactInstruction = compactMode
-    ? '\n\nIMPORTANT: The user has requested COMPACT MODE for packaging constraints. Every translation must be as short as possible while retaining full meaning. Prioritise brevity above all else — cut articles, shorten phrases, use the most concise word available. Note in each translator_notes field that compact mode was applied.'
-    : '';
+  // Route: 3-options ON → detailed cards mode
+  const langs = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
 
-  const tmMatches = findSimilarTranslations(source);
-  const tmSection = buildTMPromptSection(tmMatches);
-  updateTMIndicator(source);
-
-  // Build dynamic prompt based on selected languages
-  const _langs3 = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
-  const _names3 = {
+  const NAMES = {
     BG:'Bulgarian',CZ:'Czech',DE:'German',DK:'Danish',EE:'Estonian',EN:'English',
     ES:'Spanish',FI:'Finnish',FR:'French',GR:'Greek',HR:'Croatian',HU:'Hungarian',
     IT:'Italian',LT:'Lithuanian',LV:'Latvian',NL:'Dutch',NO:'Norwegian',PL:'Polish',
     PT:'Portuguese',RO:'Romanian',SE:'Swedish',SI:'Slovenian',SK:'Slovak'
   };
-  const _jsonStructure = _langs3.map(code => {
+  const FLAGS = {
+    BG:'🇧🇬',CZ:'🇨🇿',DE:'🇩🇪',DK:'🇩🇰',EE:'🇪🇪',EN:'🇬🇧',ES:'🇪🇸',FI:'🇫🇮',
+    FR:'🇫🇷',GR:'🇬🇷',HR:'🇭🇷',HU:'🇭🇺',IT:'🇮🇹',LT:'🇱🇹',LV:'🇱🇻',NL:'🇳🇱',
+    NO:'🇳🇴',PL:'🇵🇱',PT:'🇵🇹',RO:'🇷🇴',SE:'🇸🇪',SI:'🇸🇮',SK:'🇸🇰'
+  };
+
+  const langList = langs.map(c => NAMES[c] || c).join(', ');
+  const compactNote = compactMode ? '\n\nIMPORTANT: Keep all translations as short as possible — prioritise brevity.' : '';
+
+  const jsonStructure = langs.map(code => {
     const key = code.toLowerCase();
-    const name = _names3[code] || code;
-    return `  "${key}": {\n    "options": [\n      { "translation": "...", "tone": "Formal|Informal|Playful|Neutral|Marketing", "recommended": true, "notes": ["...", "...", "..."] },\n      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] },\n      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] }\n    ],\n    "cultural_context": "2-3 sentences on ${name} market nuances for this text type"\n  }`;
+    const name = NAMES[code] || code;
+    return `  "${key}": {
+    "options": [
+      { "translation": "...", "tone": "Formal|Informal|Playful|Neutral|Marketing", "recommended": true, "notes": ["...", "...", "..."] },
+      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] },
+      { "translation": "...", "tone": "...", "recommended": false, "notes": ["...", "...", "..."] }
+    ],
+    "cultural_context": "2-3 sentences on ${name} market nuances"
+  }`;
   }).join(',\n');
-  const _langList = _langs3.map(c => _names3[c] || c).join(', ');
 
-  const systemPrompt = `You are a specialist translator for a toy design company. Translate English product text into ${_langList}, producing 3 meaningfully different options per language.
+  const tmMatches = findSimilarTranslations(source);
+  const tmSection = buildTMPromptSection(tmMatches);
+  updateTMIndicator(source);
 
-Each option must vary in tone and register — e.g. one formal, one warm/friendly, one marketing-punchy or playful.
+  const systemPrompt = 'You are a specialist toy product translator. Translate into ' + langList + ', giving 3 meaningfully different options per language varying in tone and register.\n\nReturn ONLY valid raw JSON — no markdown, no preamble:\n{\n' + jsonStructure + '\n}' + compactNote + tmSection;
 
-Return ONLY valid raw JSON. No markdown, no code fences, no preamble. Structure:
-{
-${_jsonStructure}
-}`;
-
-  const userPrompt = `Translate this English toy/design text:
-
-"${source}"${ctx ? `\n\nContext: ${ctx}` : ''}
-
-Return raw JSON only.`;
+  const userPrompt = 'Translate: "' + source + '"' + (ctx ? '\n\nContext: ' + ctx : '') + '\n\nReturn raw JSON only.';
 
   try {
-    // Warn if too many languages for 3-options (gets very large)
-  if (selectedLangsFor3.length > 6) {
-    const proceed = confirm(`You have ${selectedLangsFor3.length} languages selected with 3 options mode. This may be slow or fail. Consider selecting fewer languages. Continue anyway?`);
-    if (!proceed) { setLoading(false); return; }
-  }
-
-  const res = await fetchWithRetry(apiKey, {
-      max_tokens: Math.min(500 * selectedLangsFor3.length + 1000, 8000),
+    const res = await fetchWithRetry(apiKey, {
+      max_tokens: 2500,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }]
     });
-
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'API error ' + res.status);
-    }
 
     const data = await res.json();
     let raw = data.content[0].text.trim()
@@ -1255,35 +1245,26 @@ Return raw JSON only.`;
     try {
       parsed = JSON.parse(raw);
     } catch(parseErr) {
-      throw new Error('The AI returned an unexpected response. Please try again. (Parse error: ' + parseErr.message + ')');
+      throw new Error('Unexpected response format. Please try again.');
     }
 
-    if (!parsed || typeof parsed !== 'object') {
-      throw new Error('Empty response from AI. Please try again.');
-    }
-
-    // Dynamically render columns for each selected language
-    const selectedLangsFor3 = _langs3;
-    const langNamesFor3 = _names3;
-    const langFlagsFor3 = LANG_FLAGS;
+    // Render columns dynamically
     const colsContainer = document.getElementById('dynamicColumns');
     const cultContainer = document.getElementById('dynamicCultural');
     colsContainer.innerHTML = '';
     cultContainer.innerHTML = '';
 
-    const gridClass = selectedLangsFor3.length === 1 ? 'single-column' : 'dual-columns';
     const colsDiv = document.createElement('div');
-    colsDiv.className = gridClass;
+    colsDiv.className = langs.length === 1 ? 'single-column' : 'dual-columns';
     colsContainer.appendChild(colsDiv);
 
-    selectedLangsFor3.forEach(code => {
-      const key = code.toLowerCase();
-      const name = langNamesFor3[code] || code;
-      const flag = langFlagsFor3[code] || '';
+    langs.forEach(code => {
+      const key  = code.toLowerCase();
+      const name = NAMES[code] || code;
+      const flag = FLAGS[code] || '';
       const langData = parsed[key];
       if (!langData) return;
 
-      // Column
       const col = document.createElement('div');
       col.innerHTML = `
         <div class="column-header ${key}">
@@ -1295,10 +1276,9 @@ Return raw JSON only.`;
       colsDiv.appendChild(col);
       renderCards(langData.options, key, `cards_${key}`);
 
-      // Cultural context
       if (langData.cultural_context) {
         const cult = document.createElement('div');
-        cult.className = `cultural-card`;
+        cult.className = 'cultural-card';
         cult.innerHTML = `<div class="cultural-title">${flag} ${name} market context</div><p>${langData.cultural_context}</p>`;
         cultContainer.appendChild(cult);
       }
@@ -1308,11 +1288,12 @@ Return raw JSON only.`;
     $('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   } catch(err) {
-    showError((err.message && err.message !== 'undefined') ? err.message : 'Translation failed — please check your API key and try again.');
+    showError(err.message || 'Translation failed — please check your API key and try again.');
   } finally {
     setLoading(false);
   }
 }
+
 
   function copyEU23() {
     const ta = document.getElementById('eu23Text');
