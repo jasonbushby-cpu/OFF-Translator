@@ -1073,7 +1073,7 @@
     <div class="dots">
       <div class="dot"></div><div class="dot"></div><div class="dot"></div>
     </div>
-    <p>Generating 6 translation options...</p>
+    <p id="loadingText">Translating...</p>
   </div>
 
   <div class="results" id="results">
@@ -1216,7 +1216,7 @@ $('sourceText').addEventListener('keydown', e => {
 
 function showError(msg) { $('errorBox').textContent = msg; $('errorBox').classList.add('show'); }
 function hideError() { $('errorBox').classList.remove('show'); }
-function setLoading(on) { $('loading').className = 'loading' + (on ? ' show' : ''); $('goBtn').disabled = on; }
+function setLoading(on, msg) { $('loading').className = 'loading' + (on ? ' show' : ''); $('goBtn').disabled = on; if (on && msg) $('loadingText').textContent = msg; }
 function showResults(on) { $('results').className = 'results' + (on ? ' show' : ''); }
 
 function copyText(btn, text) {
@@ -1256,16 +1256,11 @@ function renderCards(options, lang, containerId) {
   const container = $(containerId);
   container.innerHTML = '';
   const sourceEn = $('sourceText').value.trim();
-  const contextType = $('ctxInput').value.trim() || document.querySelector('input[name="ctxPreset"]:checked')?.value || 'Unknown';
+  const contextType = document.querySelector('input[name="ctxPreset"]:checked')?.value || $('ctxInput').value.trim() || 'Unknown';
   options.forEach((opt, i) => {
     const tone = VALID_TONES.includes(opt.tone) ? opt.tone : 'Neutral';
     const card = document.createElement('div');
     card.className = `t-card ${lang}`;
-    const translationJson = JSON.stringify(opt.translation);
-    const toneJson = JSON.stringify(tone);
-    const langJson = JSON.stringify(lang.toUpperCase());
-    const sourceJson = JSON.stringify(sourceEn);
-    const ctxJson = JSON.stringify(contextType);
     card.innerHTML = `
       <div class="card-top">
         <div class="card-metas">
@@ -1273,7 +1268,7 @@ function renderCards(options, lang, containerId) {
           <span class="tone-tag tone-${tone}">${tone}</span>
           ${opt.recommended ? '<span class="rec-badge">★ Best fit</span>' : ''}
         </div>
-        <button class="copy-btn" onclick="copyAndLog(this, ${translationJson}, ${langJson}, ${toneJson}, ${sourceJson}, ${ctxJson})">Copy</button>
+        <button class="copy-btn">Copy</button>
       </div>
       <div class="card-text" style="user-select:none;-webkit-user-select:none;">${opt.translation}</div>
       <div class="card-notes">
@@ -1281,6 +1276,11 @@ function renderCards(options, lang, containerId) {
       </div>
     `;
     container.appendChild(card);
+
+    // Attach click handler directly — avoids any escaping issues in onclick attributes
+    const btn = card.querySelector('.copy-btn');
+    const translation = opt.translation;
+    btn.addEventListener('click', () => copyAndLog(btn, translation, lang.toUpperCase(), tone, sourceEn, contextType));
   });
 }
 
@@ -1301,7 +1301,6 @@ async function doTranslate() {
 
   hideError();
   showResults(false);
-  setLoading(true);
 
   const compactMode      = document.getElementById('compactMode').checked;
   const threeOptionsMode = document.getElementById('threeOptionsMode').checked;
@@ -1316,6 +1315,8 @@ async function doTranslate() {
 
   // Route: languages selected, 3-options OFF → fast single translation per lang
   if (selectedLangs.length > 0 && !threeOptionsMode) {
+    const langCount = selectedLangs.length;
+    setLoading(true, `Translating into ${langCount} language${langCount !== 1 ? 's' : ''}...`);
     await doEU23Translate(apiKey, source, ctx, compactMode);
     setLoading(false);
     return;
@@ -1323,6 +1324,8 @@ async function doTranslate() {
 
   // Route: 3-options ON → detailed cards mode
   const langs = selectedLangs.length > 0 ? selectedLangs : ['FR', 'DE'];
+  const totalOptions = langs.length * 3;
+  setLoading(true, `Generating ${totalOptions} translation option${totalOptions !== 1 ? 's' : ''} across ${langs.length} language${langs.length !== 1 ? 's' : ''}...`);
 
   const NAMES = {
     BG:'Bulgarian',CZ:'Czech',DE:'German',DK:'Danish',EE:'Estonian',EN:'English',
