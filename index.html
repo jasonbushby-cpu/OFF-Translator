@@ -384,19 +384,20 @@
   }
 
   .copy-btn {
-    background: none;
-    border: 1px solid var(--border);
+    background: #2563eb;
+    border: none;
     border-radius: 6px;
-    padding: 4px 9px;
-    color: var(--text-dim);
+    padding: 4px 12px;
+    color: #ffffff;
     font-size: 11px;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     font-family: 'DM Mono', monospace;
     flex-shrink: 0;
   }
 
-  .copy-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .copy-btn:hover { background: #1d4ed8; }
   .copy-btn.copied { border-color: var(--green); color: var(--green); }
 
   .card-text {
@@ -1223,6 +1224,29 @@ function copyText(btn, text) {
     btn.textContent = '✓ Copied';
     btn.classList.add('copied');
     setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('copied'); }, 2000);
+  });
+}
+
+function copyAndLog(btn, text, lang, tone, sourceEn, contextType) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '✓ Copied';
+    btn.style.background = '#16a34a';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.background = '#2563eb'; }, 2000);
+    logCopyToSheets(sourceEn, contextType, lang, tone, text);
+  }).catch(() => {
+    // Fallback for browsers that block clipboard without HTTPS
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    btn.textContent = '✓ Copied';
+    btn.style.background = '#16a34a';
+    setTimeout(() => { btn.textContent = 'Copy'; btn.style.background = '#2563eb'; }, 2000);
+    logCopyToSheets(sourceEn, contextType, lang, tone, text);
   });
 }
 
